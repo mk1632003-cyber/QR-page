@@ -14,17 +14,17 @@ jobs:
         with:
           bun-version: latest
 
-      # 2. Install dependencies forcing a traditional Node-compatible structure
+      # 2. Regular Bun install (you can remove --backend=copyfile now)
       - name: Install dependencies
-        run: bun install --backend=copyfile
+        run: bun install
 
       # 3. Explicitly install the Cypress system binaries inside the Linux runner
       - name: Install Cypress Binary
-        run: bunx cypress install
+        run: bun cypress install
 
-      # 4. Spin up the server and run the tests directly via Bun
+      # 4. Spin up the server and run the tests natively using Bun's local binary execution
       - name: Run Dev Server & Cypress
         run: |
-          bunx start-server-and-test 'bun run dev' http://localhost:3000 'bunx cypress run --record --key ${{ secrets.CYPRESS_RECORD_KEY }}'
+          bunx start-server-and-test 'bun run dev' http://localhost:3000 'bun cypress run --record --key ${{ secrets.CYPRESS_RECORD_KEY }}'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
