@@ -18,17 +18,21 @@ jobs:
         with:
           bun-version: latest
 
-      # 2. Trick Cypress by generating an empty lockfile it expects
+      # 2. Trick Cypress Action validation
       - name: Create empty npm lockfile for Cypress
         run: echo '{}' > package-lock.json
 
-      # 3. Run Cypress using Bun
+      # 3. Explicitly install dependencies via Bun outside of the Cypress action
+      - name: Install dependencies
+        run: bun install
+
+      # 4. Run Cypress 
       - name: Cypress run
         uses: cypress-io/github-action@v7
         with:
-          install-command: bun install
+          # Tell the action NOT to run an installation script itself
+          install: false
           start: bun run dev 
-          # CHANGED: Now waiting on port 3000 where your server actually boots up
           wait-on: 'http://localhost:3000' 
           record: true
           parallel: true
