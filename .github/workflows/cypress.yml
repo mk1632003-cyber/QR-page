@@ -4,10 +4,7 @@ on: [push]
 jobs:
   cypress-run:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false 
-      matrix:
-        containers: [1, 2]
+    # We remove the parallel matrix because we are running it directly via the shell now
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -18,24 +15,17 @@ jobs:
         with:
           bun-version: latest
 
-      # 2. Trick Cypress Action validation
-      - name: Create empty npm lockfile for Cypress
-        run: echo '{}' > package-lock.json
-
-      # 3. Explicitly install dependencies via Bun outside of the Cypress action
+      # 2. Install dependencies with Bun
       - name: Install dependencies
         run: bun install
 
-      # 4. Run Cypress 
-      - name: Cypress run
-        uses: cypress-io/github-action@v7
-        with:
-          # Tell the action NOT to run an installation script itself
-          install: false
-          start: bun run dev 
-          wait-on: 'http://localhost:3000' 
-          record: true
-          parallel: true
+      # 3. Explicitly install the Cypress system binaries inside the Linux runner
+      - name: Install Cypress Binary
+        run: bunx cypress install
+
+      # 4. Spin up the server and run the tests directly via Bun
+      - name: Run Dev Server & Cypress
+        run: |
+          bunx start-server-and-test 'bun run dev' http://localhost:3000 'bunx cypress run --record --key ${{ secrets.CYPRESS_RECORD_KEY }}'
         env:
-          CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
