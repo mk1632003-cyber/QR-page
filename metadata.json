@@ -1,0 +1,6 @@
+{
+  "name": "Pizza Configurator",
+  "description": "A 3D circular carousel pizza configurator with smooth interactive rotation, spicy slider, dynamic ingredient selection, and high-fidelity animations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
