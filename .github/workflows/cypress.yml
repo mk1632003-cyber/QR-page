@@ -26,10 +26,10 @@ jobs:
       - name: Cypress run
         uses: cypress-io/github-action@v7
         with:
-          # Now it passes the validation check and runs our custom Bun install!
           install-command: bun install
           start: bun run dev 
-          wait-on: 'http://localhost:5173' 
+          # CHANGED: Now waiting on port 3000 where your server actually boots up
+          wait-on: 'http://localhost:3000' 
           record: true
           parallel: true
         env:
