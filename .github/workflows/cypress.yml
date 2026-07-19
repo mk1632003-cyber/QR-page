@@ -4,7 +4,6 @@ on: [push]
 jobs:
   cypress-run:
     runs-on: ubuntu-latest
-    # We remove the parallel matrix because we are running it directly via the shell now
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -15,9 +14,9 @@ jobs:
         with:
           bun-version: latest
 
-      # 2. Install dependencies with Bun
+      # 2. Install dependencies forcing a traditional Node-compatible structure
       - name: Install dependencies
-        run: bun install
+        run: bun install --backend=copyfile
 
       # 3. Explicitly install the Cypress system binaries inside the Linux runner
       - name: Install Cypress Binary
