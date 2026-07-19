@@ -5,7 +5,12 @@ import { PizzaCarousel } from './components/PizzaCarousel';
 import { IngredientSelector } from './components/IngredientSelector';
 import { BakingSimulator } from './components/BakingSimulator';
 import { OrderSummary } from './components/OrderSummary';
-import { Flame, Receipt, ShoppingCart, Info, Sparkles, Compass, ChefHat, Check, Heart, Pizza, UtensilsCrossed } from 'lucide-react';
+import { OrderHistoryDrawer } from './components/OrderHistoryDrawer.tsx';
+import { PaymentSuccessModal } from './components/PaymentSuccessModal.tsx';
+import { SandboxCheckoutModal } from './components/SandboxCheckoutModal.tsx';
+import { auth, googleAuthProvider, signInWithPopup } from './lib/firebase.ts';
+import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { Flame, Receipt, ShoppingCart, Info, Sparkles, Compass, ChefHat, Check, Heart, Pizza, UtensilsCrossed, LogOut, History, User as UserIcon } from 'lucide-react';
 
 export default function App() {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -18,10 +23,79 @@ export default function App() {
   // Modal drawer states
   const [isBakingOpen, setIsBakingOpen] = useState(false);
   const [isTicketOpen, setIsTicketOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [cartCount, setCartCount] = useState(0);
   const [showCelebration, setShowCelebration] = useState(false);
 
+  // Authentication & Stripe Success States
+  const [user, setUser] = useState<User | null>(null);
+  const [paymentOrderId, setPaymentOrderId] = useState<string | null>(null);
+  const [paymentSessionId, setPaymentSessionId] = useState<string | null>(null);
+
+  // Sandbox Mode Checkout Simulation
+  const [sandboxOrderId, setSandboxOrderId] = useState<string | null>(null);
+  const [sandboxSessionId, setSandboxSessionId] = useState<string | null>(null);
+
   const currentPreset = PRESETS[currentIndex];
+
+  // Monitor Firebase auth state
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Monitor redirect callbacks from Stripe checkout session
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment_success') === 'true') {
+      setPaymentOrderId(params.get('order_id'));
+      setPaymentSessionId(params.get('session_id'));
+    } else if (params.get('sandbox_checkout') === 'true') {
+      setSandboxOrderId(params.get('order_id'));
+      setSandboxSessionId(params.get('session_id'));
+    }
+  }, []);
+
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleAuthProvider);
+    } catch (err) {
+      console.error("Login failed:", err);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error("Logout failed:", err);
+    }
+  };
+
+  const handleClosePaymentSuccess = () => {
+    setPaymentOrderId(null);
+    setPaymentSessionId(null);
+    // Remove search query params from browser location bar cleanly
+    const url = new URL(window.location.href);
+    url.searchParams.delete('payment_success');
+    url.searchParams.delete('session_id');
+    url.searchParams.delete('order_id');
+    url.searchParams.delete('payment_cancel');
+    window.history.replaceState({}, '', url.toString());
+  };
+
+  const handleCloseSandboxCheckout = () => {
+    setSandboxOrderId(null);
+    setSandboxSessionId(null);
+    // Remove search query params from browser location bar cleanly
+    const url = new URL(window.location.href);
+    url.searchParams.delete('sandbox_checkout');
+    url.searchParams.delete('session_id');
+    url.searchParams.delete('order_id');
+    window.history.replaceState({}, '', url.toString());
+  };
 
   // Automatically load preset defaults when switching pizzas
   useEffect(() => {
@@ -115,11 +189,52 @@ export default function App() {
           </div>
         </div>
 
-        {/* STATUS & CART */}
-        <div className="flex items-center gap-4">
+        {/* STATUS & CART & AUTHENTICATION */}
+        <div className="flex items-center gap-3">
+          {/* SQL History access if logged in */}
+          {user ? (
+            <button 
+              onClick={() => setIsHistoryOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-white border border-[#dcd7ce] hover:border-[#e63946] text-[#1a1a1a] font-mono text-[11px] font-bold uppercase tracking-wider transition-all active:scale-95 flex items-center gap-1.5 shadow-sm"
+              title="View your database order history"
+            >
+              <History className="w-3.5 h-3.5 text-[#e63946]" />
+              <span className="hidden sm:inline">My Orders</span>
+            </button>
+          ) : (
+            <button 
+              onClick={handleLogin}
+              className="px-3.5 py-2 rounded-xl bg-[#e63946]/10 hover:bg-[#e63946] text-[#e63946] hover:text-white font-mono text-[11px] font-bold uppercase tracking-wider transition-all active:scale-95 flex items-center gap-1.5 border border-[#e63946]/20 shadow-sm"
+              title="Sign in with Google to synchronize database"
+            >
+              <UserIcon className="w-3.5 h-3.5" />
+              <span>Log In</span>
+            </button>
+          )}
+
+          {/* User Profile avatar + logout */}
+          {user && (
+            <div className="flex items-center gap-2 border-l border-[#e9e4db] pl-3">
+              {user.photoURL ? (
+                <img src={user.photoURL} alt={user.displayName || 'User'} className="w-8 h-8 rounded-full border border-stone-300" referrerPolicy="no-referrer" />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-stone-200 text-stone-600 flex items-center justify-center font-bold text-xs">
+                  {user.email?.slice(0, 1).toUpperCase()}
+                </div>
+              )}
+              <button 
+                onClick={handleLogout}
+                className="p-2 text-[#6b6b6b] hover:text-[#e63946] transition-colors rounded-full hover:bg-stone-100"
+                title="Log Out"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           <button 
             onClick={() => setIsTicketOpen(true)}
-            className="relative p-2.5 rounded-full bg-white border border-[#dcd7ce] text-[#1a1a1a] hover:border-[#1a1a1a] transition-all active:scale-95 flex items-center justify-center shadow-sm"
+            className="relative p-2.5 rounded-full bg-white border border-[#dcd7ce] text-[#1a1a1a] hover:border-[#1a1a1a] transition-all active:scale-95 flex items-center justify-center shadow-sm ml-1"
             aria-label="View Ticket Receipt"
           >
             <ShoppingCart className="w-5 h-5" />
@@ -294,6 +409,26 @@ export default function App() {
         customization={customization}
         calculateTotalPrice={calculateTotalPrice}
         onOrderPlaced={handleOrderPlaced}
+      />
+
+      {/* FIREBASE AUTH POSTGRES ORDER HISTORY DRAWER */}
+      <OrderHistoryDrawer
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+      />
+
+      {/* STRIPE SECURE PAYMENT SUCCESS OVERLAY MODAL */}
+      <PaymentSuccessModal
+        orderId={paymentOrderId}
+        sessionId={paymentSessionId}
+        onClose={handleClosePaymentSuccess}
+      />
+
+      {/* STRIPE SECURE SANDBOX CHECKOUT SIMULATOR OVERLAY MODAL */}
+      <SandboxCheckoutModal
+        orderId={sandboxOrderId}
+        sessionId={sandboxSessionId}
+        onClose={handleCloseSandboxCheckout}
       />
 
     </div>

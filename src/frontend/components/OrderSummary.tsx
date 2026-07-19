@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { PizzaPreset, PizzaCustomization, Topping, TOPPINGS } from '../types';
 import { X, Check, CreditCard, ShoppingBag, Gift, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { auth } from '../lib/firebase.ts';
 
 interface OrderSummaryProps {
   isOpen: boolean;
@@ -27,6 +28,8 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
   const [couponError, setCouponError] = useState(false);
   const [orderComplete, setOrderComplete] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState('Via dei Tribunali, 32, Naples');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   const basePrice = preset.basePrice;
   const sizeAdjustment = customization.size === 'personal' ? -2.0 : customization.size === 'large' ? 3.5 : 0;
@@ -100,14 +103,74 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
     }, 750);
   };
 
-  const handlePlaceOrder = () => {
-    triggerConfetti();
-    setOrderComplete(true);
-    setTimeout(() => {
-      onOrderPlaced();
-      setOrderComplete(false);
-      onClose();
-    }, 4500);
+  const handlePlaceOrder = async () => {
+    setIsProcessing(true);
+    setCheckoutError(null);
+    try {
+      // 1. Fetch Firebase ID Token if logged in
+      let idToken: string | null = null;
+      if (auth.currentUser) {
+        idToken = await auth.currentUser.getIdToken();
+      }
+
+      // 2. Submit order details to PostgreSQL database
+      const orderRes = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {})
+        },
+        body: JSON.stringify({
+          presetId: preset.id,
+          selectedToppings: customization.selectedToppings,
+          crustType: customization.crustType,
+          cheeseLevel: customization.cheeseLevel,
+          bakeStyle: customization.bakeStyle,
+          size: customization.size,
+          totalPrice: grandTotal
+        })
+      });
+
+      if (!orderRes.ok) {
+        const errData = await orderRes.json();
+        throw new Error(errData.error || 'Failed to submit order to backend.');
+      }
+
+      const createdOrder = await orderRes.json();
+
+      // 3. Request Stripe Checkout Session from backend
+      const payRes = await fetch(`/api/orders/${createdOrder.id}/pay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (!payRes.ok) {
+        const payErr = await payRes.json();
+        throw new Error(payErr.error || 'Failed to create Stripe payment session.');
+      }
+
+      const { url } = await payRes.json();
+
+      // 4. Redirect to secure Stripe Checkout page or Sandbox Simulator
+      if (url.includes('stripe.com') || url.includes('checkout.stripe.com')) {
+        try {
+          if (window.top) {
+            window.top.location.href = url;
+          } else {
+            window.open(url, '_blank');
+          }
+        } catch (e) {
+          window.open(url, '_blank');
+        }
+      } else {
+        window.location.href = url;
+      }
+
+    } catch (err: any) {
+      console.error('Failed to place order:', err);
+      setCheckoutError(err.message || 'An unexpected checkout error occurred. Please try again.');
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -332,14 +395,29 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
 
               {/* ACTION FOOTER */}
               {!orderComplete && (
-                <div className="pt-4 mt-6 border-t border-[#e9e4db] bg-[#faf7f2]/90">
+                <div className="pt-4 mt-6 border-t border-[#e9e4db] bg-[#faf7f2]/90 flex flex-col gap-3">
+                  {checkoutError && (
+                    <div className="p-3 bg-red-50 text-red-600 rounded-xl text-xs border border-red-200">
+                      <strong>Checkout Error:</strong> {checkoutError}
+                    </div>
+                  )}
                   <button
                     onClick={handlePlaceOrder}
-                    className="w-full py-4.5 bg-[#e63946] hover:bg-[#1a1a1a] text-white font-bold font-sans uppercase tracking-widest text-xs rounded-full flex items-center justify-center gap-2 transition-all active:scale-98 shadow-lg group cursor-pointer"
+                    disabled={isProcessing}
+                    className="w-full py-4.5 bg-[#e63946] hover:bg-[#1a1a1a] text-white font-bold font-sans uppercase tracking-widest text-xs rounded-full flex items-center justify-center gap-2 transition-all active:scale-98 shadow-lg group cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    <CreditCard className="w-4 h-4" />
-                    Place Woodfired Order • ${grandTotal.toFixed(2)}
-                    <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                    {isProcessing ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Processing Secure Payment...
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="w-4 h-4" />
+                        Place Woodfired Order • ${grandTotal.toFixed(2)}
+                        <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                      </>
+                    )}
                   </button>
                 </div>
               )}
