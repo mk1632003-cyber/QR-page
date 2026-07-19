@@ -1,11 +1,28 @@
-# Generate an empty lockfile to satisfy the action's validation check
-      - name: Create dummy npm lockfile
-        run: echo '{}' > package-lock.json
+name: Cypress Tests
+on: [push]
 
-      - name: Cypress run
-        uses: cypress-io/github-action@v7
+jobs:
+  cypress-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # 1. Setup Bun environment
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          # Prevent the action from running its own npm install
-          install: false
-          start: bun run dev
-          wait-on: 'http://localhost:3000'
+          bun-version: latest
+
+      # 2. Install your project dependencies using Bun
+      - name: Install dependencies
+        run: bun install
+
+      # 3. Download the core Cypress runner binaries 
+      - name: Install Cypress Binary
+        run: bunx cypress install
+
+      # 4. Spin up your server on port 3000 and run the tests
+      - name: Run Dev Server & Cypress Tests
+        run: |
+          bunx start-server-and-test 'bun run dev' http://localhost:3000 'bunx cypress run'
