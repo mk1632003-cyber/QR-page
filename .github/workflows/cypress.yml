@@ -12,17 +12,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      # 1. Install Bun on the GitHub runner
+      # 1. Install Bun
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      # 2. Run Cypress using Bun
+      # 2. Trick Cypress by generating an empty lockfile it expects
+      - name: Create empty npm lockfile for Cypress
+        run: echo '{}' > package-lock.json
+
+      # 3. Run Cypress using Bun
       - name: Cypress run
         uses: cypress-io/github-action@v7
         with:
-          # Overrides the lockfile check and forces it to use bun install
+          # Now it passes the validation check and runs our custom Bun install!
           install-command: bun install
           start: bun run dev 
           wait-on: 'http://localhost:5173' 
